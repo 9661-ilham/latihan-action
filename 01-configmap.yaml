@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aq-config
+  namespace: ss302
+data:
+  SERVICE_NAME: "aq-service"
+  ALERT_THRESHOLD: "55.5"
