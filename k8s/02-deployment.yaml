@@ -27,7 +27,7 @@ spec:
         - name: aq-service
           # Ganti OWNER (huruf kecil) dan tag dengan hasil CI terakhir, misalnya sha-1a2b3c4.
           # Mengubah baris ini lalu commit = merilis versi baru (GitOps).
-          image: ghcr.io/OWNER/aq-service:sha-0000000
+          image: ghcr.io/kel-1/aq-service:sha-0000000
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000
