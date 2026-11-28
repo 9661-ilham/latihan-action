@@ -9,7 +9,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/kel-1/REPO.git
+    repoURL: https://github.com/9661-ilham/REPO.git
     targetRevision: main
     path: k8s
   destination:
