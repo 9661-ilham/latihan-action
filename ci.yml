@@ -1,0 +1,86 @@
+# CI aq-service — SS-302 P7
+# Uji -> build -> pindai (Trivy) -> terbitkan ke GHCR dengan tag commit SHA.
+# Semua action dipin ke commit SHA (lihat komentar versi) untuk mengurangi risiko supply chain.
+name: ci
+
+on:
+  push:
+    branches: [main]
+    paths: ["app/**", ".github/workflows/ci.yml"]
+  pull_request:
+    paths: ["app/**", ".github/workflows/ci.yml"]
+  workflow_dispatch:
+
+# Hak minimum untuk GITHUB_TOKEN; job yang butuh lebih menambah sendiri.
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Pasang dependensi
+        run: pip install -r requirements.txt -r requirements-dev.txt
+      - name: Jalankan uji
+        run: pytest -q
+
+  build-scan-push:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write   # untuk push ke GHCR dengan GITHUB_TOKEN
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Tentukan nama image dan tag
+        run: |
+          echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/aq-service" >> "$GITHUB_ENV"
+          echo "TAG=sha-${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Build image (dimuat lokal untuk dipindai)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: app
+          load: true
+          push: false
+          tags: ${{ env.IMAGE }}:${{ env.TAG }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+      - name: Pindai dengan Trivy (gagal bila ada CRITICAL/HIGH yang sudah ada perbaikannya)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE }}:${{ env.TAG }}
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+
+      - name: Login ke GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push image
+        if: github.event_name != 'pull_request'
+        run: docker push "$IMAGE:$TAG"
+
+      - name: Ringkasan
+        if: github.event_name != 'pull_request'
+        run: |
+          echo "### Image terbit" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`$IMAGE:$TAG\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "Perbarui field image di k8s/02-deployment.yaml ke tag ini, lalu commit." >> "$GITHUB_STEP_SUMMARY"
